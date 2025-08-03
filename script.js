@@ -1,6 +1,22 @@
+// Firebase 설정
+const firebaseConfig = {
+  apiKey: "AIzaSyBGPNJZOpeZZi0pNg41It6iKT4oKhuMQmI",
+  authDomain: "english-test-66404.firebaseapp.com",
+  databaseURL: "https://english-test-66404-default-rtdb.firebaseio.com",
+  projectId: "english-test-66404",
+  storageBucket: "english-test-66404.firebasestorage.app",
+  messagingSenderId: "32600643426",
+  appId: "1:32600643426:web:ee37767b1abc9456e77e3b",
+  measurementId: "G-B5BBVTHZ0F"
+};
+
+// Firebase 변수 (초기화 후 설정)
+let database;
+
 // 전역 변수
 let currentScreen = 'main-screen';
 let words = [];
+let testRecords = []; // 시험 기록을 메모리에 저장
 let currentSortMode = 'date'; // 'date' 또는 'accuracy'
 let currentTest = {
     questions: [],
@@ -153,6 +169,10 @@ const screens = {
 
 // 초기화
 document.addEventListener('DOMContentLoaded', function() {
+    // Firebase 초기화
+    firebase.initializeApp(firebaseConfig);
+    database = firebase.database();
+    
     initializeApp();
     setupEventListeners();
 });
@@ -170,32 +190,52 @@ function generateRandomJuneDate() {
 }
 
 function initializeApp() {
-    // localStorage에서 단어 데이터 로드
-    const savedWords = localStorage.getItem('englishWords');
-    if (savedWords) {
-        words = JSON.parse(savedWords);
-    } else {
-        words = [...defaultWords];
-        saveWords();
-    }
-    
-    // 등록일자가 없는 단어들에 랜덤 날짜 추가
-    let needsSave = false;
-    words.forEach(word => {
-        if (!word.dateAdded) {
-            word.dateAdded = generateRandomJuneDate();
-            needsSave = true;
-        }
-    });
-    
-    if (needsSave) {
-        saveWords();
-    }
-    
     showScreen('main-screen');
-    updateWordList();
-    updateRecordsList();
-    updateMainStats();
+    loadDataFromFirebase();
+}
+
+// Firebase에서 데이터 로드
+function loadDataFromFirebase() {
+    // 단어 목록 로드
+    database.ref('word_list').once('value', (snapshot) => {
+        const firebaseWords = snapshot.val();
+        if (firebaseWords && Array.isArray(firebaseWords)) {
+            words = firebaseWords.map(word => ({
+                english: word.english,
+                korean: word.korean,
+                dateAdded: word.date,
+                rate: word.rate || 0
+            }));
+        } else {
+            // Firebase에 데이터가 없으면 기본 단어로 초기화
+            words = defaultWords.map(word => ({
+                ...word,
+                dateAdded: word.dateAdded || generateRandomJuneDate(),
+                rate: 0
+            }));
+            saveWordsToFirebase();
+        }
+        updateWordList();
+        updateMainStats();
+    });
+
+    // 시험 기록 로드
+    database.ref('exam_list').once('value', (snapshot) => {
+        const firebaseRecords = snapshot.val();
+        if (firebaseRecords && Array.isArray(firebaseRecords)) {
+            testRecords = firebaseRecords.map(record => ({
+                date: record.date,
+                score: record.test.filter(t => t.correct).length,
+                total: record.test.length,
+                details: record.test
+            }));
+        } else {
+            testRecords = [];
+        }
+        updateRecordsList();
+        updateMainStats();
+        updateWordRates(); // 정답률 업데이트
+    });
 }
 
 function setupEventListeners() {
@@ -259,26 +299,90 @@ function showScreen(screenId) {
     }
 }
 
-function saveWords() {
-    localStorage.setItem('englishWords', JSON.stringify(words));
+// Firebase에 단어 목록 저장
+function saveWordsToFirebase() {
+    const firebaseWords = words.map(word => ({
+        english: word.english,
+        korean: word.korean,
+        date: word.dateAdded,
+        rate: word.rate || 0
+    }));
+    
+    database.ref('word_list').set(firebaseWords)
+        .catch(error => {
+            console.error('단어 저장 중 오류:', error);
+            alert('단어 저장 중 오류가 발생했습니다.');
+        });
 }
 
-function saveTestRecord(testResult) {
-    const records = JSON.parse(localStorage.getItem('testRecords') || '[]');
+// Firebase에 시험 기록 저장
+function saveTestRecordToFirebase(testResult) {
     const record = {
         date: new Date().toLocaleString('ko-KR'),
         score: testResult.correct,
         total: testResult.total,
         details: testResult.details
     };
-    records.unshift(record); // 최신 기록을 맨 앞에 추가
+    
+    // 메모리에도 추가
+    testRecords.unshift(record);
     
     // 최대 50개 기록만 보관
-    if (records.length > 50) {
-        records.splice(50);
+    if (testRecords.length > 50) {
+        testRecords.splice(50);
     }
     
-    localStorage.setItem('testRecords', JSON.stringify(records));
+    // Firebase에 저장할 형식
+    const firebaseRecord = {
+        date: record.date,
+        test: record.details.map(detail => ({
+            english: detail.english,
+            korean: detail.korean,
+            correct: detail.correct
+        }))
+    };
+    
+    // Firebase에 저장
+    database.ref('exam_list').once('value', (snapshot) => {
+        let examList = snapshot.val() || [];
+        if (!Array.isArray(examList)) {
+            examList = [];
+        }
+        examList.unshift(firebaseRecord);
+        
+        // 최대 50개 기록만 보관
+        if (examList.length > 50) {
+            examList.splice(50);
+        }
+        
+        database.ref('exam_list').set(examList)
+            .then(() => {
+                updateWordRates(); // 정답률 업데이트
+            })
+            .catch(error => {
+                console.error('시험 기록 저장 중 오류:', error);
+                alert('시험 기록 저장 중 오류가 발생했습니다.');
+            });
+    });
+}
+
+// 단어별 정답률 계산 및 업데이트
+function updateWordRates() {
+    words.forEach(word => {
+        const stats = calculateWordStats(word.english);
+        word.rate = stats.rate;
+    });
+    
+    // Firebase에 업데이트된 정답률 저장
+    saveWordsToFirebase();
+}
+
+function saveWords() {
+    saveWordsToFirebase();
+}
+
+function saveTestRecord(testResult) {
+    saveTestRecordToFirebase(testResult);
 }
 
 function startTest() {
@@ -424,7 +528,8 @@ function addWord() {
     words.unshift({
         english: englishWord,
         korean: koreanWord,
-        dateAdded: new Date().toISOString()
+        dateAdded: new Date().toISOString(),
+        rate: 0
     });
     
     saveWords();
@@ -488,7 +593,8 @@ function saveWordEdit(index) {
     words[index] = {
         english: newEnglish,
         korean: newKorean,
-        dateAdded: words[index].dateAdded // 기존 등록일자 유지
+        dateAdded: words[index].dateAdded, // 기존 등록일자 유지
+        rate: words[index].rate || 0 // 기존 정답률 유지
     };
     
     saveWords();
@@ -511,11 +617,10 @@ function deleteWord(index) {
 }
 
 function calculateWordStats(englishWord) {
-    const records = JSON.parse(localStorage.getItem('testRecords') || '[]');
     let totalAppearances = 0;
     let correctCount = 0;
     
-    records.forEach(record => {
+    testRecords.forEach(record => {
         record.details.forEach(detail => {
             if (detail.english.toLowerCase() === englishWord.toLowerCase()) {
                 totalAppearances++;
@@ -563,16 +668,20 @@ function sortWords(wordsToSort) {
             const statsA = calculateWordStats(a.english);
             const statsB = calculateWordStats(b.english);
             
-            // 둘 다 시험에 나온 적이 없으면 맨 아래에서 등록순으로
-            if (statsA.appearances === 0 && statsB.appearances === 0) {
+            // Firebase에서 저장된 정답률 우선 사용, 없으면 계산된 정답률 사용
+            const rateA = statsA.appearances > 0 ? statsA.rate : (a.rate || 0);
+            const rateB = statsB.appearances > 0 ? statsB.rate : (b.rate || 0);
+            
+            // 둘 다 정답률이 0이면 등록순으로
+            if (rateA === 0 && rateB === 0) {
                 return new Date(b.dateAdded) - new Date(a.dateAdded);
-            } else if (statsA.appearances === 0) {
+            } else if (rateA === 0) {
                 return 1; // A가 아래에 (B가 위에)
-            } else if (statsB.appearances === 0) {
+            } else if (rateB === 0) {
                 return -1; // B가 아래에 (A가 위에)
             } else {
-                // 둘 다 시험에 나왔으면 정답률 낮은 순으로
-                return statsA.rate - statsB.rate;
+                // 둘 다 정답률이 있으면 낮은 순으로
+                return rateA - rateB;
             }
         });
     }
@@ -596,7 +705,7 @@ function updateWordList() {
     
     wordList.innerHTML = sortedWords.map((word) => {
         const stats = calculateWordStats(word.english);
-        const statsText = stats.appearances > 0 ? `${stats.rate}%` : '-';
+        const statsText = stats.appearances > 0 ? `${stats.rate}%` : (word.rate > 0 ? `${word.rate}%` : '-');
         const dateAdded = new Date(word.dateAdded).toLocaleDateString('ko-KR');
         
         return `
@@ -619,8 +728,7 @@ function updateWordList() {
 }
 
 function showRecordDetail(recordIndex) {
-    const records = JSON.parse(localStorage.getItem('testRecords') || '[]');
-    const record = records[recordIndex];
+    const record = testRecords[recordIndex];
     
     if (!record) return;
     
@@ -663,13 +771,12 @@ function closeRecordDetailModal() {
 
 function updateMainStats() {
     const totalWords = words.length;
-    const records = JSON.parse(localStorage.getItem('testRecords') || '[]');
-    const totalTests = records.length;
+    const totalTests = testRecords.length;
     
     // 평균 정답률 계산
     let averageAccuracy = '-';
     if (totalTests > 0) {
-        const totalAccuracy = records.reduce((sum, record) => {
+        const totalAccuracy = testRecords.reduce((sum, record) => {
             const accuracy = (record.score / record.total) * 100;
             return sum + accuracy;
         }, 0);
@@ -684,14 +791,13 @@ function updateMainStats() {
 
 function updateRecordsList() {
     const recordsList = document.getElementById('records-list');
-    const records = JSON.parse(localStorage.getItem('testRecords') || '[]');
     
-    if (records.length === 0) {
+    if (testRecords.length === 0) {
         recordsList.innerHTML = '<div style="text-align: center; color: #666; padding: 20px;">시험 기록이 없습니다.</div>';
         return;
     }
     
-    recordsList.innerHTML = records.map((record, index) => `
+    recordsList.innerHTML = testRecords.map((record, index) => `
         <div class="record-item" onclick="showRecordDetail(${index})">
             <div class="record-date">${record.date}</div>
             <div class="record-score">점수: ${record.score}/${record.total}점 (${Math.round((record.score / record.total) * 100)}%)</div>
