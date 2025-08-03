@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>영어 암기 앱</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- 메인 화면 -->
+        <div id="main-screen" class="screen active">
+            <h1>영어 암기 앱</h1>
+            <div class="stats-container">
+                <div class="stat-item">
+                    <div class="stat-number" id="total-words">0</div>
+                    <div class="stat-label">총 단어 수</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number" id="total-tests">0</div>
+                    <div class="stat-label">총 시험 횟수</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number" id="average-accuracy">-</div>
+                    <div class="stat-label">정답률</div>
+                </div>
+            </div>
+            <div class="button-group">
+                <button id="start-test-btn" class="main-btn">시험 시작</button>
+                <button id="manage-words-btn" class="main-btn">단어 관리</button>
+                <button id="view-records-btn" class="main-btn">시험 기록 조회</button>
+            </div>
+        </div>
+
+        <!-- 시험 화면 -->
+        <div id="test-screen" class="screen">
+            <div class="test-header">
+                <span id="question-counter">1/10</span>
+                <button id="back-to-main" class="back-btn">메인으로</button>
+            </div>
+            <div class="test-content">
+                <div id="english-word" class="word-display"></div>
+                <button id="show-meaning-btn" class="action-btn">뜻 보기</button>
+                <div id="korean-meaning" class="meaning-display hidden"></div>
+                <div id="answer-buttons" class="answer-group hidden">
+                    <button id="correct-btn" class="answer-btn correct">맞다</button>
+                    <button id="wrong-btn" class="answer-btn wrong">틀렸다</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 시험 결과 화면 -->
+        <div id="result-screen" class="screen">
+            <h2>시험 결과</h2>
+            <div id="score-summary"></div>
+            <div id="result-table"></div>
+            <button id="back-to-main-from-result" class="main-btn">메인으로</button>
+        </div>
+
+        <!-- 단어 관리 화면 -->
+        <div id="word-management-screen" class="screen">
+            <div class="management-header">
+                <h2>단어 관리</h2>
+                <button id="back-to-main-from-words" class="back-btn">메인으로</button>
+            </div>
+            <div class="word-management-controls">
+                <div class="add-word-toggle">
+                    <button id="show-add-form-btn" class="main-btn">새로운 단어 추가</button>
+                </div>
+                <div class="sort-controls">
+                    <span class="sort-label">정렬:</span>
+                    <button id="sort-by-date" class="sort-btn active">등록순</button>
+                    <button id="sort-by-accuracy" class="sort-btn">정답률순</button>
+                </div>
+            </div>
+            <div class="word-input-section hidden" id="word-input-section">
+                <input type="text" id="english-input" placeholder="영어 단어">
+                <input type="text" id="korean-input" placeholder="한글 뜻">
+                <div class="input-buttons">
+                    <button id="add-word-btn" class="action-btn">단어 추가</button>
+                    <button id="cancel-add-btn" class="cancel-btn">취소</button>
+                </div>
+            </div>
+            <div id="word-list" class="word-list"></div>
+        </div>
+
+        <!-- 시험 기록 조회 화면 -->
+        <div id="records-screen" class="screen">
+            <div class="records-header">
+                <h2>시험 기록 조회</h2>
+                <button id="back-to-main-from-records" class="back-btn">메인으로</button>
+            </div>
+            <div id="records-list" class="records-list"></div>
+        </div>
+    </div>
+
+    <!-- 시험 기록 상세 모달 -->
+    <div id="record-detail-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modal-title">시험 기록 상세</h3>
+                <button id="close-modal" class="close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="modal-score-summary"></div>
+                <div id="modal-result-table"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html> 
